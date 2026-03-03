@@ -10,8 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class TenantController{
 
     @GetMapping("/view")
-
-//    @PreAuthorize("hasRole('TENANT')")
+    @PreAuthorize("hasRole('TENANT')")
     public String view() {
         return "Tenant can view properties";
     }
