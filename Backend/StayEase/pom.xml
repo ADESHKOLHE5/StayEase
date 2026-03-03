@@ -44,10 +44,10 @@
   </dependencyManagement>
   <modules>
     <module>api-gateway</module>
-    <module>Ai-service</module>
+<!--    <module>Ai-service</module>-->
     <module>auth</module>
     <module>booking-service</module>
-    <module>notification-service</module>
+<!--    <module>notification-service</module>-->
     <module>property-service</module>
     <module>booking-service</module>
 

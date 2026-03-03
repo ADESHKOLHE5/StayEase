@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/Backend/StayEase/Ai-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/Backend/StayEase/api-gateway/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/Backend/StayEase/auth/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/Backend/StayEase/booking-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/Backend/StayEase/notification-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/Backend/StayEase/property-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/Backend/StayEase/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/Backend/StayEase/src/main/resources" charset="UTF-8" />
+  </component>
+</project>
