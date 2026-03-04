@@ -3,9 +3,7 @@ package com.property.property_service.service;
 import com.property.property_service.entity.Property;
 import com.property.property_service.repository.PropertyRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
+
 import org.springframework.stereotype.Service;
 
 import java.util.List;

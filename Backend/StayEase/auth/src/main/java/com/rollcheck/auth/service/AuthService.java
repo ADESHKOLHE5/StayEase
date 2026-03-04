@@ -17,6 +17,16 @@ public class AuthService {
     private final JwtService jwtService;
 
     public User register(User user) {
+        // Check if username already exists
+        if (repository.existsByUsername(user.getUsername())) {
+            throw new IllegalArgumentException("Username '" + user.getUsername() + "' is already registered");
+        }
+        
+        // Check if email already exists
+        if (repository.existsByEmail(user.getEmail())) {
+            throw new IllegalArgumentException("Email '" + user.getEmail() + "' is already registered");
+        }
+        
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         return repository.save(user);
     }

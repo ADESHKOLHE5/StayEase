@@ -1,11 +1,13 @@
 package com.property.property_service.controller;
 
 import com.property.property_service.entity.Property;
+import com.property.property_service.exception.UnauthorizedAccessException;
 import com.property.property_service.service.PropertyService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
+
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,6 +24,7 @@ public class PropertyController {
 
     // Accessible via Gateway: /properties/tenant/browse
     // Tenants can browse all available properties
+
     @GetMapping("/tenant/browse")
     public ResponseEntity<?> browseProperties(HttpServletRequest request) {
         String role = request.getHeader("X-User-Role");
@@ -70,30 +73,26 @@ public class PropertyController {
 
     // Accessible via Gateway: /properties/owner/add
     // Only owners can add new properties
+
     @PostMapping("/owner/add")
-    public ResponseEntity<?> addProperty(@RequestBody Property property, HttpServletRequest request) {
+    public ResponseEntity<Property> addProperty(@Valid @RequestBody Property property, HttpServletRequest request) {
         String role = request.getHeader("X-User-Role");
         String userIdHeader = request.getHeader("X-User-Id");
         String username = request.getHeader("X-Username");
 
         // Role check: allow OWNER or ADMIN
         if (role == null || !(role.equalsIgnoreCase("OWNER") || role.equalsIgnoreCase("ADMIN"))) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only owners can add properties");
+            throw new UnauthorizedAccessException("Only owners or admins can add properties. Your role: " + (role == null ? "GUEST" : role));
         }
 
         Long ownerId = null;
         try {
             if (userIdHeader != null) ownerId = Long.parseLong(userIdHeader);
         } catch (NumberFormatException ignored) {
-        }
 
-        if (property.getPropertyName() == null || property.getPropertyName().isEmpty()) {
-            return ResponseEntity.badRequest().body("Property name is required");
         }
-
         Property saved = service.saveProperty(property, ownerId, username);
-        return ResponseEntity.ok(saved);
+        return new ResponseEntity<>(saved,HttpStatus.CREATED);
     }
 
     // Accessible via Gateway: /properties/owner/my
@@ -104,8 +103,7 @@ public class PropertyController {
         String userIdHeader = request.getHeader("X-User-Id");
         
         if (role == null || !role.equalsIgnoreCase("OWNER")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only owners can view their properties");
+            throw new UnauthorizedAccessException("Only owners can view their properties");
         }
         
         if (userIdHeader == null) {
@@ -132,8 +130,7 @@ public class PropertyController {
         String userIdHeader = request.getHeader("X-User-Id");
         
         if (role == null || !role.equalsIgnoreCase("OWNER")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only owners can update properties");
+            throw new UnauthorizedAccessException("Only owners can update properties");
         }
         
         if (userIdHeader == null) {
