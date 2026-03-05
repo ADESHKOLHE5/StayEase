@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -40,8 +41,47 @@ public class PropertyService {
                 .orElseThrow(() -> new RuntimeException("Property not found with ID: " + propertyId));
     }
 
-    public List<Property> findByCity(String city) {
-        return repository.findByCity(city);
+    public List<Property> searchWithFilters(
+            String city,
+            String propertyType,
+            Double maxRent) {
+
+        List<Property> allProperties = repository.findAll();
+        List<Property> filteredList = new ArrayList<>();
+
+        for (Property p : allProperties) {
+
+            // City filter
+            if (city != null && !city.isEmpty()
+                    && !p.getCity().equalsIgnoreCase(city)) {
+                continue;
+            }
+
+            // Property Type filter
+            if (propertyType != null && !propertyType.isEmpty()
+                    && !p.getPropertyType().equalsIgnoreCase(propertyType)) {
+                continue;
+            }
+
+//            // Furnished filter
+//            if (furnished != null) {
+//                if (!furnished.equals(p.getFurnished())) {
+//                    continue;
+//                }
+//            }
+
+            // Max Rent filter
+            if (maxRent != null) {
+                if (p.getRentPerMonth() == null ||
+                        p.getRentPerMonth() > maxRent) {
+                    continue;
+                }
+            }
+
+            filteredList.add(p);
+        }
+
+        return filteredList;
     }
 
     public Property updateProperty(String propertyId, Property propertyDetails, Long ownerId) {

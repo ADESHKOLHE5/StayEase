@@ -26,33 +26,37 @@ public class PropertyController {
     // Tenants can browse all available properties
 
     @GetMapping("/tenant/browse")
-    public ResponseEntity<?> browseProperties(HttpServletRequest request) {
+    public ResponseEntity<List<Property>> browseProperties(HttpServletRequest request) {
         String role = request.getHeader("X-User-Role");
-        
-        if (role == null || !role.equalsIgnoreCase("TENANT")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only tenants can browse properties");
-        }
-        
-        return ResponseEntity.ok(service.findAll());
+
+        if (role == null || !role.equalsIgnoreCase("TENANT"))
+            throw new UnauthorizedAccessException("Only tenants can browse properties");
+
+
+        List<Property> AllProperty = service.findAll();
+        return new ResponseEntity<>(AllProperty,HttpStatus.OK);
     }
 
     // Accessible via Gateway: /properties/tenant/search?city=NYC
     // Tenants can search properties by city
+
     @GetMapping("/tenant/search")
-    public ResponseEntity<?> searchByCity(@RequestParam String city, HttpServletRequest request) {
+    public ResponseEntity<List<Property>> searchProperties(
+            @RequestParam(required = false) String city,
+            @RequestParam(required = false) String propertyType,
+            @RequestParam(required = false) Double maxRent,
+            HttpServletRequest request) {
+
         String role = request.getHeader("X-User-Role");
-        
+
         if (role == null || !role.equalsIgnoreCase("TENANT")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only tenants can search properties");
+            throw new RuntimeException("Only tenants can search properties");
         }
-        
-        if (city == null || city.isEmpty()) {
-            return ResponseEntity.badRequest().body("City parameter is required");
-        }
-        
-        return ResponseEntity.ok(service.findByCity(city));
+
+        List<Property> properties = service.searchWithFilters(
+                city, propertyType, maxRent);
+
+        return ResponseEntity.ok(properties);
     }
 
     // Accessible via Gateway: /properties/tenant/details/{id}
@@ -185,7 +189,20 @@ public class PropertyController {
 
     // Internal call for Booking Service (Feign)
     @PutMapping("/internal/reduce-room/{id}")
-    public void reduceRoom(@PathVariable String id) {
+    public ResponseEntity<?> reduceRoom(@PathVariable String id,
+                                        HttpServletRequest request) {
+
+        String role = request.getHeader("X-User-Role");
+
+        // Allow only OWNER or SERVICE role (recommended)
+        if (role == null ||
+                !(role.equalsIgnoreCase("OWNER") || role.equalsIgnoreCase("ADMIN"))) {
+
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body("Unauthorized internal access");
+        }
+
         service.updateAvailability(id, -1);
+        return ResponseEntity.ok("Room reduced successfully");
     }
 }

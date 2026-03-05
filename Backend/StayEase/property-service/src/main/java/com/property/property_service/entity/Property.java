@@ -41,5 +41,12 @@ public class Property {
     @Positive(message = "Rent must be greater than zero")
     private Double rentPerMonth;
 
+    private String imageUrl;
+
+
     private List<String> facilities;
+
+
 }
+
+
