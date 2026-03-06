@@ -1,7 +1,10 @@
 package com.property.property_service.controller;
 
 import com.property.property_service.entity.Property;
+import com.property.property_service.exception.InValidIdException;
+import com.property.property_service.exception.ResourceNotFoundException;
 import com.property.property_service.exception.UnauthorizedAccessException;
+import com.property.property_service.exception.UserNotFoundException;
 import com.property.property_service.service.PropertyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,13 +21,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PropertyController {
 
-    private final PropertyService service;
+    private final PropertyService propertyService;
 
-    // ===================== TENANT ENDPOINTS =====================
+      //user controllers
 
-    // Accessible via Gateway: /properties/tenant/browse
-    // Tenants can browse all available properties
-
+    // /properties/tenant/browse
     @GetMapping("/tenant/browse")
     public ResponseEntity<List<Property>> browseProperties(HttpServletRequest request) {
         String role = request.getHeader("X-User-Role");
@@ -32,14 +33,12 @@ public class PropertyController {
         if (role == null || !role.equalsIgnoreCase("TENANT"))
             throw new UnauthorizedAccessException("Only tenants can browse properties");
 
-
-        List<Property> AllProperty = service.findAll();
+        List<Property> AllProperty = propertyService.findAll();
         return new ResponseEntity<>(AllProperty,HttpStatus.OK);
     }
 
-    // Accessible via Gateway: /properties/tenant/search?city=NYC
-    // Tenants can search properties by city
-
+    // /properties/tenant/search?city=Delhi
+    // search by city,property,type and rent
     @GetMapping("/tenant/search")
     public ResponseEntity<List<Property>> searchProperties(
             @RequestParam(required = false) String city,
@@ -50,34 +49,32 @@ public class PropertyController {
         String role = request.getHeader("X-User-Role");
 
         if (role == null || !role.equalsIgnoreCase("TENANT")) {
-            throw new RuntimeException("Only tenants can search properties");
+            throw new UnauthorizedAccessException("Only tenants can search properties");
         }
 
-        List<Property> properties = service.searchWithFilters(
+        List<Property> filteredProperty = propertyService.searchWithFilters(
                 city, propertyType, maxRent);
 
-        return ResponseEntity.ok(properties);
+        return ResponseEntity.ok(filteredProperty);
     }
 
-    // Accessible via Gateway: /properties/tenant/details/{id}
-    // Tenants can view property details
+    //  /properties/tenant/details/{id}
+    // user can see the each property details
     @GetMapping("/tenant/details/{id}")
-    public ResponseEntity<?> getPropertyDetails(@PathVariable String id, HttpServletRequest request) {
+    public ResponseEntity<Property> getPropertyDetails(@PathVariable String id, HttpServletRequest request) {
         String role = request.getHeader("X-User-Role");
         
         if (role == null || !role.equalsIgnoreCase("TENANT")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only tenants can view property details");
+            throw new UnauthorizedAccessException("Only tenants can view property details");
         }
-        
-        return ResponseEntity.ok(service.findById(id));
+        Property singleProperty = propertyService.findById(id);
+        return ResponseEntity.ok(singleProperty);
     }
 
-    // ===================== OWNER ENDPOINTS =====================
+    // owner access
 
-    // Accessible via Gateway: /properties/owner/add
-    // Only owners can add new properties
-
+    // /properties/owner/add
+    // only owners can add new properties
     @PostMapping("/owner/add")
     public ResponseEntity<Property> addProperty(@Valid @RequestBody Property property, HttpServletRequest request) {
         String role = request.getHeader("X-User-Role");
@@ -85,7 +82,7 @@ public class PropertyController {
         String username = request.getHeader("X-Username");
 
         // Role check: allow OWNER or ADMIN
-        if (role == null || !(role.equalsIgnoreCase("OWNER") || role.equalsIgnoreCase("ADMIN"))) {
+        if (role == null || !(role.equalsIgnoreCase("OWNER"))) {
             throw new UnauthorizedAccessException("Only owners or admins can add properties. Your role: " + (role == null ? "GUEST" : role));
         }
 
@@ -95,39 +92,47 @@ public class PropertyController {
         } catch (NumberFormatException ignored) {
 
         }
-        Property saved = service.saveProperty(property, ownerId, username);
+        Property saved = propertyService.saveProperty(property, ownerId, username);
         return new ResponseEntity<>(saved,HttpStatus.CREATED);
     }
 
-    // Accessible via Gateway: /properties/owner/my
-    // Owners can view their own properties
+    //  /properties/owner/my
+    // owners can view their own all properties
     @GetMapping("/owner/my")
-    public ResponseEntity<?> myProperties(HttpServletRequest request) {
+    public ResponseEntity<List<Property>> myProperties(HttpServletRequest request) {
         String role = request.getHeader("X-User-Role");
         String userIdHeader = request.getHeader("X-User-Id");
-        
+
+        //  auth Check
         if (role == null || !role.equalsIgnoreCase("OWNER")) {
-            throw new UnauthorizedAccessException("Only owners can view their properties");
+            throw new UnauthorizedAccessException("Access denied. Only registered owners can view property listings.");
         }
-        
+
+        //  identity check
         if (userIdHeader == null) {
-            return ResponseEntity.badRequest().body("Missing user id");
+            throw new UserNotFoundException("User identification header is missing.");
         }
-        
+
         Long ownerId;
         try {
             ownerId = Long.parseLong(userIdHeader);
         } catch (NumberFormatException e) {
-            return ResponseEntity.badRequest().body("Invalid user id");
+            throw new InValidIdException("The provided User ID format is invalid.");
         }
-        
-        return ResponseEntity.ok(service.findByOwnerId(ownerId));
+
+        List<Property> properties = propertyService.findByOwnerId(ownerId);
+
+        if (properties == null || properties.isEmpty()) {
+            throw new ResourceNotFoundException("No properties found for this account. Please list a property before attempting to view your collection.");
+        }
+
+        return ResponseEntity.ok(properties);
     }
 
-    // Accessible via Gateway: /properties/owner/update/{id}
-    // Owners can update their properties
+    // /properties/owner/update/{id}
+    // owners can update their properties
     @PutMapping("/owner/update/{id}")
-    public ResponseEntity<?> updateProperty(@PathVariable String id,
+    public ResponseEntity<Property> updateProperty(@PathVariable String id,
                                             @RequestBody Property property,
                                             HttpServletRequest request) {
         String role = request.getHeader("X-User-Role");
@@ -138,56 +143,54 @@ public class PropertyController {
         }
         
         if (userIdHeader == null) {
-            return ResponseEntity.badRequest().body("Missing user id");
+            throw new InValidIdException("Missing user id");
         }
         
         Long ownerId;
         try {
             ownerId = Long.parseLong(userIdHeader);
         } catch (NumberFormatException e) {
-            return ResponseEntity.badRequest().body("Invalid user id");
+            throw new InValidIdException("Invalid user id");
         }
         
-        Property updated = service.updateProperty(id, property, ownerId);
+        Property updated = propertyService.updateProperty(id, property, ownerId);
         return ResponseEntity.ok(updated);
     }
 
-    // Accessible via Gateway: /properties/owner/delete/{id}
-    // Owners can delete their properties
+    //  /properties/owner/delete/{id}
+    // owners can delete their properties
     @DeleteMapping("/owner/delete/{id}")
     public ResponseEntity<?> deleteProperty(@PathVariable String id, HttpServletRequest request) {
         String role = request.getHeader("X-User-Role");
         String userIdHeader = request.getHeader("X-User-Id");
         
         if (role == null || !role.equalsIgnoreCase("OWNER")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only owners can delete properties");
+            throw new UnauthorizedAccessException("Only owners can delete properties");
         }
         
         if (userIdHeader == null) {
-            return ResponseEntity.badRequest().body("Missing user id");
+            throw new InValidIdException("Missing user id");
         }
+
         
         Long ownerId;
         try {
             ownerId = Long.parseLong(userIdHeader);
         } catch (NumberFormatException e) {
-            return ResponseEntity.badRequest().body("Invalid user id");
+            throw new InValidIdException("Invalid user id");
         }
-        
-        service.deleteProperty(id, ownerId);
+
+        propertyService.deleteProperty(id, ownerId);
         return ResponseEntity.ok("Property deleted successfully");
     }
 
-    // ===================== PUBLIC ENDPOINTS =====================
-
-    // Public endpoint: browse all properties without authentication
+    // browse all properties without authentication
     @GetMapping("/all")
     public List<Property> getAll() {
-        return service.findAll();
+        return propertyService.findAll();
     }
 
-    // Internal call for Booking Service (Feign)
+    // internal call for booking service (Feign)
     @PutMapping("/internal/reduce-room/{id}")
     public ResponseEntity<?> reduceRoom(@PathVariable String id,
                                         HttpServletRequest request) {
@@ -202,7 +205,7 @@ public class PropertyController {
                     .body("Unauthorized internal access");
         }
 
-        service.updateAvailability(id, -1);
+        propertyService.updateAvailability(id, -1);
         return ResponseEntity.ok("Room reduced successfully");
     }
 }

@@ -43,7 +43,6 @@ public class Property {
 
     private String imageUrl;
 
-
     private List<String> facilities;
 
 

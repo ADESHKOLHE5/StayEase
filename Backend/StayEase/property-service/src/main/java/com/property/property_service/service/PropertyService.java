@@ -1,7 +1,10 @@
 package com.property.property_service.service;
 
 import com.property.property_service.entity.Property;
+import com.property.property_service.exception.PropertyNotFoundExceptions;
+import com.property.property_service.exception.UnauthorizedAccessException;
 import com.property.property_service.repository.PropertyRepository;
+import jakarta.el.PropertyNotFoundException;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.stereotype.Service;
@@ -13,7 +16,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PropertyService {
 
-    private final PropertyRepository repository;
+    private final PropertyRepository propertyRepo;
 
     public Property saveProperty(Property property, Long ownerId, String ownerName) {
         // set owner info forwarded by API Gateway
@@ -25,20 +28,21 @@ public class PropertyService {
             property.setAvailableRooms(property.getTotalRooms());
         }
 
-        return repository.save(property);
+        return propertyRepo.save(property);
     }
 
     public List<Property> findAll() {
-        return repository.findAll();
+        return propertyRepo.findAll();
     }
 
     public List<Property> findByOwnerId(Long ownerId) {
-        return repository.findByOwnerId(ownerId);
+
+        return propertyRepo.findByOwnerId(ownerId);
     }
 
     public Property findById(String propertyId) {
-        return repository.findById(propertyId)
-                .orElseThrow(() -> new RuntimeException("Property not found with ID: " + propertyId));
+        return propertyRepo.findById(propertyId)
+                .orElseThrow(() ->  new PropertyNotFoundExceptions("Property not found with ID: " + propertyId));
     }
 
     public List<Property> searchWithFilters(
@@ -46,31 +50,31 @@ public class PropertyService {
             String propertyType,
             Double maxRent) {
 
-        List<Property> allProperties = repository.findAll();
+        List<Property> allProperties = propertyRepo.findAll();
         List<Property> filteredList = new ArrayList<>();
 
         for (Property p : allProperties) {
 
-            // City filter
+            // city filter
             if (city != null && !city.isEmpty()
                     && !p.getCity().equalsIgnoreCase(city)) {
                 continue;
             }
 
-            // Property Type filter
+            // property filter
             if (propertyType != null && !propertyType.isEmpty()
                     && !p.getPropertyType().equalsIgnoreCase(propertyType)) {
                 continue;
             }
 
-//            // Furnished filter
+//            // furnished filter
 //            if (furnished != null) {
 //                if (!furnished.equals(p.getFurnished())) {
 //                    continue;
 //                }
 //            }
 
-            // Max Rent filter
+            //  Rent filter
             if (maxRent != null) {
                 if (p.getRentPerMonth() == null ||
                         p.getRentPerMonth() > maxRent) {
@@ -85,12 +89,12 @@ public class PropertyService {
     }
 
     public Property updateProperty(String propertyId, Property propertyDetails, Long ownerId) {
-        Property property = repository.findById(propertyId)
-                .orElseThrow(() -> new RuntimeException("Property not found with ID: " + propertyId));
+        Property property = propertyRepo.findById(propertyId)
+                .orElseThrow(() -> new PropertyNotFoundExceptions("Property not found with ID: " + propertyId));
 
-        // Verify owner
+        // verify owner
         if (!property.getOwnerId().equals(ownerId)) {
-            throw new RuntimeException("You don't have permission to update this property");
+            throw new UnauthorizedAccessException("You don't have permission to update this property");
         }
 
         // Update allowed fields
@@ -116,11 +120,11 @@ public class PropertyService {
             property.setTotalRooms(propertyDetails.getTotalRooms());
         }
 
-        return repository.save(property);
+        return propertyRepo.save(property);
     }
 
     public void deleteProperty(String propertyId, Long ownerId) {
-        Property property = repository.findById(propertyId)
+        Property property = propertyRepo.findById(propertyId)
                 .orElseThrow(() -> new RuntimeException("Property not found with ID: " + propertyId));
 
         // Verify owner
@@ -128,11 +132,11 @@ public class PropertyService {
             throw new RuntimeException("You don't have permission to delete this property");
         }
 
-        repository.deleteById(propertyId);
+        propertyRepo.deleteById(propertyId);
     }
 
     public void updateAvailability(String propertyId, int change) {
-        Property property = repository.findById(propertyId)
+        Property property = propertyRepo.findById(propertyId)
                 .orElseThrow(() -> new RuntimeException("Property not found with ID: " + propertyId));
 
         int newCount = property.getAvailableRooms() + change;
@@ -142,6 +146,6 @@ public class PropertyService {
         }
 
         property.setAvailableRooms(newCount);
-        repository.save(property);
+        propertyRepo.save(property);
     }
 }
