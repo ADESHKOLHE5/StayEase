@@ -33,6 +33,9 @@ public class User {
     @Max(95)
     private int age;
 
+    @Column(unique = true, length = 10)
+    private String phoneNumber;
+
     @Enumerated(EnumType.STRING)
     private Role role;
 

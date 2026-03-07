@@ -1,17 +1,19 @@
 package com.Booking.booking_service.controller;
 
-import com.Booking.booking_service.Feign.PropertyClient;
 import com.Booking.booking_service.entity.Booking;
 import com.Booking.booking_service.entity.BookingStatus;
+import com.Booking.booking_service.exception.UnauthorizedUserException;
+import com.Booking.booking_service.exception.UserIDHeaderMissingException;
 import com.Booking.booking_service.service.BookingService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/bookings")
@@ -19,169 +21,279 @@ import java.util.List;
 public class BookingController {
 
     private final BookingService bookingService;
-    private final PropertyClient propertyClient;
 
-    // ===================== TENANT ENDPOINTS =====================
-
-    // TENANT: Create a new booking
-    @PostMapping("/tenant/create")
-    public ResponseEntity<?> createBooking(@Valid @RequestBody Booking booking, 
+     // /bookings/tenant/request?propertyId=abc123
+    @PostMapping("/tenant/request")
+    public ResponseEntity<Booking> requestBooking(@RequestParam String propertyId,
                                             HttpServletRequest request) {
-        String role = request.getHeader("X-User-Role");
-        String userIdHeader = request.getHeader("X-User-Id");
+        String role          = request.getHeader("X-User-Role");
+        String userIdHeader  = request.getHeader("X-User-Id");
+        String username      = request.getHeader("X-Username");
 
-        // Role check
-        if (role == null || !role.equalsIgnoreCase("TENANT")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only tenants can create bookings");
-        }
+        if (role == null || !role.equalsIgnoreCase("TENANT"))
+            throw new UnauthorizedUserException("Only tenants can request bookings.");
 
-        if (userIdHeader == null) {
-            return ResponseEntity.badRequest().body("Missing user id");
-        }
+        if (userIdHeader == null)
+            throw new UserIDHeaderMissingException("User ID header missing.");
 
-        Long tenantId;
         try {
-            tenantId = Long.parseLong(userIdHeader);
+            Long tenantId = Long.parseLong(userIdHeader);
+            Booking booking1 = bookingService.requestBooking(propertyId, tenantId, username);
+            return new ResponseEntity<>(booking1,HttpStatus.CREATED);
         } catch (NumberFormatException e) {
-            return ResponseEntity.badRequest().body("Invalid user id");
+            throw new  UserIDHeaderMissingException("Invalid user ID format."+e);
+        } catch (IllegalStateException e) {
+            throw new RuntimeException(e.getMessage());
         }
-
-        booking.setTenantId(tenantId);
-        Booking saved = bookingService.createBooking(booking);
-        return new ResponseEntity<>(saved, HttpStatus.CREATED);
     }
 
-    // TENANT: View own bookings
+
+    // /bookings/tenant/my
+    //own dashboard
     @GetMapping("/tenant/my")
-    public ResponseEntity<?> getMyBookings(HttpServletRequest request) {
+    public ResponseEntity<List<Booking>> myBookings(HttpServletRequest request) {
+        String role         = request.getHeader("X-User-Role");
+        String userIdHeader = request.getHeader("X-User-Id");
+
+        if (role == null || !role.equalsIgnoreCase("TENANT"))
+            throw new UnauthorizedUserException("Only tenants can view their bookings.");
+
+        if (userIdHeader == null)
+            throw new UserIDHeaderMissingException("User ID header missing.");
+
+        try {
+            Long tenantId = Long.parseLong(userIdHeader);
+            List<Booking> bookings = bookingService.getTenantBookings(tenantId);
+            return new ResponseEntity<>(bookings,HttpStatus.OK);
+        } catch (NumberFormatException e) {
+            throw new UserIDHeaderMissingException("Invalid user ID format.");
+        }
+    }
+
+
+     // /bookings/tenant/cancel/{bookingId}
+    // /bookings/tenant/cancel/{bookingId}
+
+    @DeleteMapping("/tenant/cancel/{bookingId}")
+    public ResponseEntity<Map<String, Object>> cancelBooking(
+            @PathVariable Long bookingId,
+            HttpServletRequest request) {
+
         String role = request.getHeader("X-User-Role");
         String userIdHeader = request.getHeader("X-User-Id");
 
+        // Validate role
         if (role == null || !role.equalsIgnoreCase("TENANT")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only tenants can view their bookings");
+            throw new UnauthorizedUserException("Only tenants can cancel their bookings.");
         }
 
-        if (userIdHeader == null) {
-            return ResponseEntity.badRequest().body("Missing user id");
+        // Validate userId header
+        if (userIdHeader == null || userIdHeader.isBlank()) {
+            throw new UserIDHeaderMissingException("User ID header is missing.");
         }
 
         Long tenantId;
         try {
             tenantId = Long.parseLong(userIdHeader);
         } catch (NumberFormatException e) {
-            return ResponseEntity.badRequest().body("Invalid user id");
+            throw new IllegalArgumentException("Invalid user ID format.");
         }
 
-        List<Booking> bookings = bookingService.findByTenantId(tenantId);
-        return ResponseEntity.ok(bookings);
+        Booking cancelledBooking = bookingService.cancelBooking(bookingId, tenantId);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Booking cancelled successfully. You can now create a new request.");
+        response.put("booking", cancelledBooking);
+
+        return ResponseEntity.ok(response);
     }
-
-    // ===================== OWNER ENDPOINTS =====================
-
-    // OWNER: View bookings for their properties
-    @GetMapping("/owner/property/{propertyId}")
-    public ResponseEntity<?> getBookingsForProperty(@PathVariable Long propertyId,
-                                                    HttpServletRequest request) {
-        String role = request.getHeader("X-User-Role");
+    // /bookings/tenant/contact/{bookingId}
+    //return contact details if approved
+    @GetMapping("/tenant/contact/{bookingId}")
+    public ResponseEntity<?> tenantContactDetails(@PathVariable Long bookingId,
+                                                  HttpServletRequest request) {
+        String role         = request.getHeader("X-User-Role");
         String userIdHeader = request.getHeader("X-User-Id");
 
-        if (role == null || !role.equalsIgnoreCase("OWNER")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only owners can view bookings for their properties");
-        }
+        if (role == null || !role.equalsIgnoreCase("TENANT"))
+            throw new UnauthorizedUserException("Access denied.");
 
-        if (userIdHeader == null) {
-            return ResponseEntity.badRequest().body("Missing user id");
-        }
+        if (userIdHeader == null)
+            throw new UserIDHeaderMissingException("User ID header missing.");
 
-        Long ownerId;
         try {
-            ownerId = Long.parseLong(userIdHeader);
+            Long userId = Long.parseLong(userIdHeader);
+            Booking booking = bookingService.getContactDetails(bookingId, userId, role);
+            return ResponseEntity.ok(Map.of(
+                    "message",      "Your booking is approved! Contact the owner to arrange move-in.",
+                    "bookingId",    booking.getBookingId(),
+                    "propertyName", booking.getPropertyName(),
+                    "ownerName",    booking.getOwnerName(),
+                    "rentAmount",   booking.getRentAmount(),
+                    "approvalDate", booking.getApprovalDate()
+            ));
         } catch (NumberFormatException e) {
-            return ResponseEntity.badRequest().body("Invalid user id");
+            throw new UserIDHeaderMissingException("Invalid user ID format.");
+        } catch (IllegalArgumentException e) {
+            return notFound(e.getMessage());
+        } catch (IllegalStateException e) {
+            return forbidden(e.getMessage());
         }
-
-        List<Booking> bookings = bookingService.findByPropertyIdAndOwnerId(propertyId, ownerId);
-        return ResponseEntity.ok(bookings);
     }
 
-    // OWNER: Approve a booking
+
+
+     // /bookings/owner/dashboard
+     // /bookings/owner/dashboard?status=PENDING    //optonal search on status
+    @GetMapping("/owner/dashboard")
+    public ResponseEntity<?> ownerDashboard(@RequestParam(required = false) BookingStatus status,
+                                            HttpServletRequest request) {
+        String role         = request.getHeader("X-User-Role");
+        String userIdHeader = request.getHeader("X-User-Id");
+
+        if (role == null || !role.equalsIgnoreCase("OWNER"))
+            return forbidden("Only owners can view their dashboard.");
+
+        if (userIdHeader == null)
+            return badRequest("User ID header missing.");
+
+        try {
+            Long ownerId = Long.parseLong(userIdHeader);
+            List<Booking> bookings = (status != null)
+                    ? bookingService.getOwnerDashboardByStatus(ownerId, status)
+                    : bookingService.getOwnerDashboard(ownerId);
+            return ResponseEntity.ok(bookings);
+        } catch (NumberFormatException e) {
+            return badRequest("Invalid user ID format.");
+        }
+    }
+
+    /**
+       /bookings/owner/approve/{bookingId}
+
+     * owner approve pending booking
+     *  decrements property availableRooms via Feign
+     *  Auto-cancels remaining pending requests if property becomes full
+     *   Returns tenant contact info in response
+     */
     @PutMapping("/owner/approve/{bookingId}")
     public ResponseEntity<?> approveBooking(@PathVariable Long bookingId,
-                                             HttpServletRequest request) {
-        String role = request.getHeader("X-User-Role");
+                                            HttpServletRequest request) {
+        String role         = request.getHeader("X-User-Role");
         String userIdHeader = request.getHeader("X-User-Id");
 
-        if (role == null || !role.equalsIgnoreCase("OWNER")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only owners can approve bookings");
-        }
+        if (role == null || !role.equalsIgnoreCase("OWNER"))
+            return forbidden("Only owners can approve bookings.");
 
-        if (userIdHeader == null) {
-            return ResponseEntity.badRequest().body("Missing user id");
-        }
+        if (userIdHeader == null)
+            return badRequest("User ID header missing.");
 
-        Long ownerId;
         try {
-            ownerId = Long.parseLong(userIdHeader);
+            Long ownerId = Long.parseLong(userIdHeader);
+            Booking approved = bookingService.approveBooking(bookingId, ownerId);
+            return ResponseEntity.ok(Map.of(
+                    "message",         "Booking approved! Contact the tenant to proceed.",
+                    "tenantUsername",  approved.getTenantUsername(),
+                    "rentAmount",      approved.getRentAmount(),
+                    "approvalDate",    approved.getApprovalDate(),
+                    "booking",         approved
+            ));
         } catch (NumberFormatException e) {
-            return ResponseEntity.badRequest().body("Invalid user id");
+            return badRequest("Invalid user ID format.");
+        } catch (IllegalArgumentException e) {
+            return notFound(e.getMessage());
+        } catch (IllegalStateException e) {
+            return conflict(e.getMessage());
         }
-
-        Booking approved = bookingService.approveBooking(bookingId, ownerId);
-        return ResponseEntity.ok(approved);
     }
 
-    // OWNER: Reject a booking
+    /**
+     /bookings/owner/reject/{bookingId}
+     * Owner rejects a pending booking.
+     * The tenant active request slot is freed
+     */
     @PutMapping("/owner/reject/{bookingId}")
     public ResponseEntity<?> rejectBooking(@PathVariable Long bookingId,
-                                            HttpServletRequest request) {
-        String role = request.getHeader("X-User-Role");
+                                           HttpServletRequest request) {
+        String role         = request.getHeader("X-User-Role");
         String userIdHeader = request.getHeader("X-User-Id");
 
-        if (role == null || !role.equalsIgnoreCase("OWNER")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only owners can reject bookings");
-        }
+        if (role == null || !role.equalsIgnoreCase("OWNER"))
+            return forbidden("Only owners can reject bookings.");
 
-        if (userIdHeader == null) {
-            return ResponseEntity.badRequest().body("Missing user id");
-        }
+        if (userIdHeader == null)
+            return badRequest("User ID header missing.");
 
-        Long ownerId;
         try {
-            ownerId = Long.parseLong(userIdHeader);
+            Long ownerId = Long.parseLong(userIdHeader);
+            Booking rejected = bookingService.rejectBooking(bookingId, ownerId);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Booking rejected.",
+                    "booking", rejected
+            ));
         } catch (NumberFormatException e) {
-            return ResponseEntity.badRequest().body("Invalid user id");
+            return badRequest("Invalid user ID format.");
+        } catch (IllegalArgumentException e) {
+            return notFound(e.getMessage());
+        } catch (IllegalStateException e) {
+            return conflict(e.getMessage());
         }
-
-        Booking rejected = bookingService.rejectBooking(bookingId, ownerId);
-        return ResponseEntity.ok(rejected);
     }
 
-    // ===================== ADMIN ENDPOINTS =====================
+    /**
+     * GET /bookings/owner/contact/{bookingId}
+     *
+     * Returns tenant contact (tenantUsername) for an APPROVED booking.
+     */
+    @GetMapping("/owner/contact/{bookingId}")
+    public ResponseEntity<?> ownerContactDetails(@PathVariable Long bookingId,
+                                                 HttpServletRequest request) {
+        String role         = request.getHeader("X-User-Role");
+        String userIdHeader = request.getHeader("X-User-Id");
 
-    // ADMIN: View all bookings
-    @GetMapping("/admin/all")
-    public ResponseEntity<?> getAllBookings(HttpServletRequest request) {
-        String role = request.getHeader("X-User-Role");
+        if (role == null || !role.equalsIgnoreCase("OWNER"))
+            return forbidden("Access denied.");
 
-        if (role == null || !role.equalsIgnoreCase("ADMIN")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only admins can view all bookings");
+        if (userIdHeader == null)
+            return badRequest("User ID header missing.");
+
+        try {
+            Long userId = Long.parseLong(userIdHeader);
+            Booking booking = bookingService.getContactDetails(bookingId, userId, role);
+            return ResponseEntity.ok(Map.of(
+                    "message",         "Contact the tenant to arrange move-in.",
+                    "bookingId",       booking.getBookingId(),
+                    "propertyName",    booking.getPropertyName(),
+                    "tenantUsername",  booking.getTenantUsername(),
+                    "rentAmount",      booking.getRentAmount(),
+                    "approvalDate",    booking.getApprovalDate()
+            ));
+        } catch (NumberFormatException e) {
+            return badRequest("Invalid user ID format.");
+        } catch (IllegalArgumentException e) {
+            return notFound(e.getMessage());
+        } catch (IllegalStateException e) {
+            return forbidden(e.getMessage());
         }
-
-        List<Booking> bookings = bookingService.findAll();
-        return ResponseEntity.ok(bookings);
     }
 
-    // ===================== PUBLIC ENDPOINTS =====================
+    // ═══════════════════════════════════════════════════════════════════
+    //  RESPONSE HELPERS (keep controller thin)
+    // ═══════════════════════════════════════════════════════════════════
 
-    // Public: Get all bookings (read-only)
-    @GetMapping("/all")
-    public List<Booking> getAll() {
-        return bookingService.findAll();
+    private ResponseEntity<Map<String, String>> forbidden(String msg) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", msg));
+    }
+
+    private ResponseEntity<Map<String, String>> badRequest(String msg) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", msg));
+    }
+
+    private ResponseEntity<Map<String, String>> conflict(String msg) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", msg));
+    }
+
+    private ResponseEntity<Map<String, String>> notFound(String msg) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", msg));
     }
 }

@@ -23,7 +23,7 @@ public class PropertyController {
 
     private final PropertyService propertyService;
 
-      //user controllers
+    //user controllers
 
     // /properties/tenant/browse
     @GetMapping("/tenant/browse")
@@ -81,7 +81,7 @@ public class PropertyController {
         String userIdHeader = request.getHeader("X-User-Id");
         String username = request.getHeader("X-Username");
 
-        // Role check: allow OWNER or ADMIN
+
         if (role == null || !(role.equalsIgnoreCase("OWNER"))) {
             throw new UnauthorizedAccessException("Only owners or admins can add properties. Your role: " + (role == null ? "GUEST" : role));
         }
@@ -134,7 +134,7 @@ public class PropertyController {
     @PutMapping("/owner/update/{id}")
     public ResponseEntity<Property> updateProperty(@PathVariable String id,
                                             @RequestBody Property property,
-                                            HttpServletRequest request) {
+                                            HttpServletRequest request){
         String role = request.getHeader("X-User-Role");
         String userIdHeader = request.getHeader("X-User-Id");
         
@@ -160,19 +160,18 @@ public class PropertyController {
     //  /properties/owner/delete/{id}
     // owners can delete their properties
     @DeleteMapping("/owner/delete/{id}")
-    public ResponseEntity<?> deleteProperty(@PathVariable String id, HttpServletRequest request) {
+    public ResponseEntity<String> deleteProperty(@PathVariable String id, HttpServletRequest request) {
         String role = request.getHeader("X-User-Role");
         String userIdHeader = request.getHeader("X-User-Id");
         
-        if (role == null || !role.equalsIgnoreCase("OWNER")) {
+        if (role == null || !role.equalsIgnoreCase("OWNER"))
             throw new UnauthorizedAccessException("Only owners can delete properties");
-        }
-        
-        if (userIdHeader == null) {
-            throw new InValidIdException("Missing user id");
-        }
 
         
+        if (userIdHeader == null)
+            throw new InValidIdException("Missing user id");
+
+
         Long ownerId;
         try {
             ownerId = Long.parseLong(userIdHeader);
@@ -192,20 +191,43 @@ public class PropertyController {
 
     // internal call for booking service (Feign)
     @PutMapping("/internal/reduce-room/{id}")
-    public ResponseEntity<?> reduceRoom(@PathVariable String id,
+    public ResponseEntity<String> reduceRoom(@PathVariable String id,
                                         HttpServletRequest request) {
 
-        String role = request.getHeader("X-User-Role");
-
-        // Allow only OWNER or SERVICE role (recommended)
-        if (role == null ||
-                !(role.equalsIgnoreCase("OWNER") || role.equalsIgnoreCase("ADMIN"))) {
-
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Unauthorized internal access");
+        // Check X-Internal-Service header (consistent with other internal endpoints)
+        if (!"booking-service".equals(request.getHeader("X-Internal-Service"))) {
+            throw new UnauthorizedAccessException("Unauthorized internal access");
         }
 
         propertyService.updateAvailability(id, -1);
         return ResponseEntity.ok("Room reduced successfully");
+    }
+
+    /**
+      internal get — used by booking service through Feign.
+      guarded by X-Internal-Service header instead of a role header.
+     */
+    @GetMapping("/internal/{id}")
+    public ResponseEntity<?> getPropertyInternal(@PathVariable String id,
+                                                 HttpServletRequest request) {
+        if (!"booking-service".equals(request.getHeader("X-Internal-Service"))) {
+            throw new UnauthorizedAccessException("unauthorized internal access");
+        }
+        return ResponseEntity.ok(propertyService.getPropertyInternal(id));
+    }
+
+    /**
+     * inter PUT — booking service calls this to decrement/increment available rooms.
+     * delta = -1 for booking approval, +1 for cancellation rollback (future use).
+     */
+    @PutMapping("/internal/update-rooms/{id}")
+    public ResponseEntity<?> updateRoomsInternal(@PathVariable String id,
+                                                 @RequestParam int delta,
+                                                 HttpServletRequest request) {
+        if (!"booking-service".equals(request.getHeader("X-Internal-Service"))) {
+            throw new UnauthorizedAccessException("Unauthorized internal access");
+        }
+        propertyService.updateAvailability(id, delta);
+        return ResponseEntity.ok("Rooms updated successfully");
     }
 }

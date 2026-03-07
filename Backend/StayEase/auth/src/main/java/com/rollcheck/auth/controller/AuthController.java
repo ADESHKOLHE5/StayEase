@@ -12,12 +12,12 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class AuthController {
 
-    private final AuthService service;
+    private final AuthService authService;
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody User user) {
         try {
-            User registeredUser = service.register(user);
+            User registeredUser = authService.register(user);
             return ResponseEntity.status(HttpStatus.CREATED).body(registeredUser);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -28,7 +28,7 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody User user) {
         try {
-            String token = service.login(user);
+            String token = authService.login(user);
             return ResponseEntity.ok(new TokenResponse(token));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -36,7 +36,7 @@ public class AuthController {
         }
     }
 
-    // Inner classes for response objects
+    // inner classes for response objects
     @lombok.Data
     @lombok.AllArgsConstructor
     static class ErrorResponse {
