@@ -15,16 +15,28 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @Table(name = "users")
 public class User {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long userId;
 
-    @NotBlank
-    private String username;
+    @NotNull
+    private String firstname;
+
+    @NotNull
+    @Size(min = 3, max = 20)
+    private String lastname;
 
     @Email
     @Column(unique = true, nullable = false)
     private String email;
+
+    @NotBlank
+    private String username;
+
+    @Column(unique = true, length = 10)
+    @NotBlank
+    private String phoneNumber;
 
     @NotBlank
     private String password;
@@ -35,6 +47,8 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     private Role role;
+
+    private Gender gender;
 
     @Enumerated(EnumType.STRING)
     private Status status = Status.ACTIVE;
